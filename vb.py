@@ -4,49 +4,50 @@ from numpy import linalg, trace as tr
 from math import log, pi, ceil
 from scipy.special import loggamma, digamma
 
-def vb_ar_update(X, Y, w, prec, weight_b, weight_c, noise_b, noise_c):
+def vb_ar_update(X, Y, w, cov, weight_b, weight_c, noise_b, noise_c):
 
-    #Upper case is used for the posterior values and data.
-    #Lower case is used for the priors and constants.
     n = X.shape[0]
     p = X.shape[1]
 
-    #A value used in the noise posterior and convergence criteria
-    E_D = 0.5*linalg.norm(w)**2 + 0.5*tr(prec*X.transpose()*X)
+    # Upper case is used for the posterior values and data.
+    # Lower case is used for the priors and constants.
 
-    #Update noise precision gamma posterior
-    NOISE_B = 1/(E_D+1/noise_b)
-    NOISE_C = (n/2 + noise_c)
+    # Weight and noise precision priors are converted to scalars
+    weight_prec = np.asscalar(np.array(weight_b*weight_c))
+    noise_prec = np.asscalar(np.array(noise_b*noise_c))
+
+    # Update the weight covariance matrix
+    COV = linalg.inv(noise_prec*X.transpose()*X + weight_prec*np.identity(p))
+    
+    # Update the weight vector mean
+    W = cov*X.transpose()*noise_prec*Y
+
+    # Update the weight precision gamma posterior parameters
+    WEIGHT_B = 1/( 0.5*w.transpose()*w + 0.5*tr(cov) + 1/weight_b )
+    WEIGHT_C = p/2 + weight_c
+
+    # A term describing data variance and prediction error using priors
+    # This is value is used in noise precision and convergence criteria
+    E = 0.5*(Y - X*w).transpose()*(Y-X*w) + 0.5*tr(cov*X.transpose()*X)
+
+    # Update the noise precision gamma posterior parameters
+    NOISE_B = 1/( E + 1/noise_b )
+    NOISE_C = n/2 + noise_c
     NOISE_PREC = NOISE_B*NOISE_C
 
-    #Update weight precision gamma posterior
-    WEIGHT_B = 1/(0.5*linalg.norm(w)**2 + 0.5*tr(prec)+ 1/weight_b)
-    WEIGHT_C = (p/2 + weight_c)
-    WEIGHT_PREC = WEIGHT_B*WEIGHT_C
-
-    #Update wieght and covariance matrix posterior means.
-    PREC = linalg.inv(NOISE_PREC*X.transpose()*X + WEIGHT_PREC*np.identity(p))
-    W = PREC*X.transpose()*NOISE_PREC*Y
-
-    #VB Lower Bound
+    # VB Lower Bound
     beta = digamma(NOISE_C) + log(NOISE_B)
-    lwr_bnd = n*beta/2 - NOISE_PREC*E_D  - n*log(2*pi)/2
+    lwr_bnd = n*beta/2 - NOISE_PREC*E  - n*log(2*pi)/2
 
-    #POSTERIOR/Prior KL divergences
-    kl_w = kl_gaussian(W, PREC, w, prec)
+    # Posterior||Prior KL divergences
+    kl_w = kl_gaussian(W, COV, w, cov)
     kl_weight = kl_gamma(WEIGHT_B, WEIGHT_C, weight_b, weight_c)
     kl_noise = kl_gamma(NOISE_B, NOISE_C, noise_b, noise_c)
 
-    #Negative Free-Energy
-
-    # print('lower bound: ' + str(type(lwr_bnd)))
-    # print('weight: ' + str(type(kl_w)))
-    # print('weight prec: ' +  str(type(kl_weight)))
-    # print('noise prec: ' + str(type(kl_noise)))
-
+    # Negative Free-Energy
     F = lwr_bnd - kl_w - kl_weight - kl_noise
 
-    return (W, PREC, WEIGHT_B, WEIGHT_C, NOISE_B, NOISE_C, F)
+    return (W, COV, WEIGHT_B, WEIGHT_C, NOISE_B, NOISE_C, F)
 
 def kl_gaussian( MU, COV, mu, cov):
     d = mu.shape[0]
@@ -67,9 +68,9 @@ def test_vb_ar_fit(ts, order, chunking):
 
     N = len(ts)
 
-    noise_b = 1000
+    noise_b = 100
     noise_c = 0.001
-    weight_b = 1000
+    weight_b = 100
     weight_c = 0.001
     prec = np.identity(order)
 
@@ -88,14 +89,15 @@ def test_vb_ar_fit(ts, order, chunking):
         Y = Y_full[i:(i+chunking)]
         if i == 0 :
             W, s = least_squares(ts[:(order + chunking)],order)
+            print('\nInitial Prior: \n\t', W)
             W = W.transpose()
             prec = prec*s
         else:
             updated = vb_ar_update(X,Y,W,prec,weight_b,weight_c,noise_b,noise_c)
             W, prec, weight_b, weight_c, noise_b, noise_c, F = updated
-            if i > 60 :
+            if abs(F - F_prev)/abs(F_prev) < 0.01:
                 break
             F_prev = F
         i = i + chunking
 
-    return W.transpose()[0], ceil((i+1)/3), F.item(0)
+    return W.transpose()[0], ceil((i+1)/chunking), F

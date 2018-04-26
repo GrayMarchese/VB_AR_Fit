@@ -30,4 +30,4 @@ def least_squares(ts, order):
     X, Y = get_data(ts, order)
     W = linalg.inv(X.transpose()*X)*X.transpose()*Y
     S = (1/(len(ts)-order-1))*(linalg.norm(X*W - Y)**2)
-    return W.transpose()[0], S
+    return W.transpose(), S
