@@ -16,15 +16,16 @@ def vb_ar_update(X, Y, w, cov, weight_b, weight_c, noise_b, noise_c):
     weight_prec = np.asscalar(np.array(weight_b*weight_c))
     noise_prec = np.asscalar(np.array(noise_b*noise_c))
 
-    # Update the weight covariance matrix
-    COV = linalg.inv(noise_prec*X.transpose()*X + weight_prec*np.identity(p))
-    
-    # Update the weight vector mean
-    W = cov*X.transpose()*noise_prec*Y
-
     # Update the weight precision gamma posterior parameters
     WEIGHT_B = 1/( 0.5*w.transpose()*w + 0.5*tr(cov) + 1/weight_b )
     WEIGHT_C = p/2 + weight_c
+    WEIGHT_PREC =  np.asscalar(np.array(WEIGHT_B*WEIGHT_C))
+
+    # Update the weight covariance matrix
+    COV = linalg.inv(noise_prec*X.transpose()*X + WEIGHT_PREC*np.identity(p))
+    
+    # Update the weight vector mean
+    W = COV*X.transpose()*noise_prec*Y
 
     # A term describing data variance and prediction error using priors
     # This is value is used in noise precision and convergence criteria
@@ -100,4 +101,4 @@ def test_vb_ar_fit(ts, order, chunking):
             F_prev = F
         i = i + chunking
 
-    return W.transpose()[0], ceil((i+1)/chunking), F
+    return W.transpose()[0], ceil((i+1)/chunking), np.asscalar(np.real(F))
