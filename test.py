@@ -1,14 +1,13 @@
 from ar import *
 from vb import *
 
-N = 30000
+N = 3000
 True_W = [.2,0,-.4,-.2]
 Noise_Variance = 1
 order = 4
 chunking = 50
 
 ts = generate_ar(N,True_W,Noise_Variance,500)
-
 
 print('\nTrue Weights: \n\t', True_W)
 

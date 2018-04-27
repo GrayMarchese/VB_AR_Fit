@@ -27,9 +27,9 @@ def vb_ar_update(X, Y, w, cov, weight_b, weight_c, noise_b, noise_c):
     # Update the weight vector mean
     W = COV*X.transpose()*noise_prec*Y
 
-    # A term describing data variance and prediction error using priors
+    # A term describing data variance and prediction error using posteriors
     # This is value is used in noise precision and convergence criteria
-    E = 0.5*(Y - X*w).transpose()*(Y-X*w) + 0.5*tr(cov*X.transpose()*X)
+    E = 0.5*(Y - X*W).transpose()*(Y-X*W) + 0.5*tr(COV*X.transpose()*X)
 
     # Update the noise precision gamma posterior parameters
     NOISE_B = 1/( E + 1/noise_b )
@@ -41,7 +41,7 @@ def vb_ar_update(X, Y, w, cov, weight_b, weight_c, noise_b, noise_c):
     lwr_bnd = n*beta/2 - NOISE_PREC*E  - n*log(2*pi)/2
 
     # Posterior||Prior KL divergences
-    kl_w = kl_gaussian(W, COV, w, cov)
+    kl_w = kl_gaussian(W, COV, w, cov, p)
     kl_weight = kl_gamma(WEIGHT_B, WEIGHT_C, weight_b, weight_c)
     kl_noise = kl_gamma(NOISE_B, NOISE_C, noise_b, noise_c)
 
@@ -50,13 +50,12 @@ def vb_ar_update(X, Y, w, cov, weight_b, weight_c, noise_b, noise_c):
 
     return (W, COV, WEIGHT_B, WEIGHT_C, NOISE_B, NOISE_C, F)
 
-def kl_gaussian( MU, COV, mu, cov):
-    d = mu.shape[0]
+def kl_gaussian( MU, COV, mu, cov, p):
     cov_inv = linalg.inv(cov)
     kl_div = 0.5*log(linalg.det(cov)/linalg.det(COV))
     kl_div = kl_div + 0.5*tr(cov_inv*COV)
-    kl_div = kl_div + 0.5*(mu - MU).transpose()*cov_inv*(mu - MU)
-    kl_div = kl_div - 0.5*d
+    kl_div = kl_div + 0.5*(MU - mu).transpose()*cov_inv*(MU - mu)
+    kl_div = kl_div - 0.5*p
     return kl_div
 
 def kl_gamma(B,C,b,c):
@@ -90,7 +89,6 @@ def test_vb_ar_fit(ts, order, chunking):
         Y = Y_full[i:(i+chunking)]
         if i == 0 :
             W, s = least_squares(ts[:(order + chunking)],order)
-            print('\nInitial Prior: \n\t', W)
             W = W.transpose()
             prec = prec*s
         else:
